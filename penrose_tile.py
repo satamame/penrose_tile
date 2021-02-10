@@ -201,7 +201,7 @@ class MainWindow(tk.Tk):
         # 収縮ボタン
         self.def_btn = tk.Button(
             self.button_frame,
-            text='Deflate', command=self.deflate, width=10)
+            text='Deflate', command=self.deflate, width=10, state=tk.DISABLED)
         self.def_btn.pack(padx=5, pady=5, side=tk.TOP)
 
         # カラーピッカー1
@@ -217,12 +217,6 @@ class MainWindow(tk.Tk):
             text='Color 2', command=self.pick_col_2, width=10,
             bg=self.color2[1])
         self.col_btn_2.pack(padx=5, pady=5, side=tk.TOP)
-
-        # 再描画ボタン
-        self.redaw_btn = tk.Button(
-            self.button_frame,
-            text='Redraw', command=self.redraw, width=10)
-        self.redaw_btn.pack(padx=5, pady=5, side=tk.TOP)
 
         # 保存ボタン
         self.save_btn = tk.Button(
@@ -242,35 +236,22 @@ class MainWindow(tk.Tk):
         type = self.ptn_type.get()
         colors = self.color1[0], self.color2[0]
 
-        # 初期状態のパターンを生成する
+        # 初期状態のパターンを生成して、1回収縮・描画する
         self.pattern = Pattern(type, Point(w, h), colors)
+        self.deflate()
 
-        # キャンバスに描画する
-        self.draw_pattern()
+        # 収縮ボタンを有効にする
+        self.def_btn['state'] = tk.NORMAL
+        # 保存ボタンを有効にする
+        self.save_btn['state'] = tk.NORMAL
 
     def deflate(self):
         """収縮 (三角形を分割) する
         """
+        if not hasattr(self, 'pattern'):
+            return
         self.pattern.subdivide()
         self.draw_pattern()
-
-    def pick_col_1(self):
-        """カラーピッカーを開いて、選択された値を Color1 にセットする
-        """
-        color_code = colorchooser.askcolor(self.color1[0])
-        if all(color_code):
-            rgb = [int(x) for x in color_code[0]]
-            self.color1 = (tuple(rgb), color_code[1])
-            self.col_btn_1['bg'] = color_code[1]
-
-    def pick_col_2(self):
-        """カラーピッカーを開いて、選択された値を Color2 にセットする
-        """
-        color_code = colorchooser.askcolor(self.color2[0])
-        if all(color_code):
-            rgb = [int(x) for x in color_code[0]]
-            self.color2 = (tuple(rgb), color_code[1])
-            self.col_btn_2['bg'] = color_code[1]
 
     def draw_pattern(self):
         """現在のパターンをキャンバスに描画する
@@ -289,10 +270,27 @@ class MainWindow(tk.Tk):
         self.image_tk = ImageTk.PhotoImage(self.image_pil)
         self.canvas.create_image(0, 0, image=self.image_tk, anchor=tk.NW)
 
-        # 保存ボタンを有効にする
-        self.save_btn['state'] = tk.NORMAL
+    def pick_col_1(self):
+        """カラーピッカーを開いて、Color1 をセットして、再描画する
+        """
+        color_code = colorchooser.askcolor(self.color1[0])
+        if all(color_code):
+            rgb = [int(x) for x in color_code[0]]
+            self.color1 = (tuple(rgb), color_code[1])
+            self.col_btn_1['bg'] = color_code[1]
+            self.apply_colors()
 
-    def redraw(self):
+    def pick_col_2(self):
+        """カラーピッカーを開いて、Color2 にセットして、再描画する
+        """
+        color_code = colorchooser.askcolor(self.color2[0])
+        if all(color_code):
+            rgb = [int(x) for x in color_code[0]]
+            self.color2 = (tuple(rgb), color_code[1])
+            self.col_btn_2['bg'] = color_code[1]
+            self.apply_colors()
+
+    def apply_colors(self):
         """選択中の色を使って現在のパターンを再描画する
         """
         if not hasattr(self, 'pattern'):
