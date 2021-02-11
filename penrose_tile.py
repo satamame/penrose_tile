@@ -64,36 +64,34 @@ class Pattern(object):
     def set_colors_from_rgb(self, colors):
         """colors に入っている (r, g, b) を逆順にして属性にセットする
         """
-        color1 = colors[0][2], colors[0][1], colors[0][0]
-        color2 = colors[1][2], colors[1][1], colors[1][0]
-        self.colors = (color1, color2)
+        self.colors = [list(reversed(c)) for c in colors]
 
     def draw(self, img):
         """img 配列に対して現在の状態を描画する
         """
-        for tr in self.triangles:
-            self.draw_triangle(img, tr)
+        # 輪郭はリストにまとめて最後に一括で描画する
+        polylines = []
 
-    def draw_triangle(self, img, tr):
-        """三角形を描画する
-        """
-        # 塗りつぶし
-        pts = np.array([tr.p1, tr.p2, tr.p3], np.int32)
-        pts = pts.reshape((-1, 1, 2))
-        color = self.colors[tr.type]
-        cv2.fillConvexPoly(img, pts, color)
-
-        # 輪郭
+        # 描くべき辺を取り出す関数
         if self.type == K_AND_D:
-            # Kite and Dart: 各三角形の p1-p2 の辺は描かない
-            pts = np.array([tr.p2, tr.p3, tr.p1], np.int32)
+            get_line = lambda tr: np.array([tr.p2, tr.p3, tr.p1], np.int32)
         else:
-            # 細いひし形と太いひし形: 各三角形の p2-p3 の辺は描かない
-            pts = np.array([tr.p3, tr.p1, tr.p2], np.int32)
+            get_line = lambda tr: np.array([tr.p3, tr.p1, tr.p2], np.int32)
 
-        pts = pts.reshape((-1, 1, 2))
-        cv2.polylines(img, [pts], False, (0, 0, 0), 1)
+        # すべての三角形を描画するループ
+        for tr in self.triangles:
+            # 塗りつぶし
+            pts = np.array([tr.p1, tr.p2, tr.p3], np.int32)
+            pts = pts.reshape((-1, 1, 2))
+            color = self.colors[tr.type]
+            cv2.fillConvexPoly(img, pts, color)
 
+            # 描くべき辺を取り出してリストに追加
+            polyline = get_line(tr).reshape((-1, 1, 2))
+            polylines.append(polyline)
+
+        # 輪郭を描画する
+        cv2.polylines(img, polylines, False, self.colors[2], 1)
 
     def subdivide(self):
         """すべての三角形を分割して、収縮のステップを進める
@@ -168,9 +166,12 @@ class MainWindow(tk.Tk):
         self.ptn_type = tk.IntVar()
         self.ptn_type.set(K_AND_D)
 
-        # 各タイルの色
-        self.color1 = ((192, 240, 255), '#c0f0ff')
-        self.color2 = ((176, 255, 192), '#b0ffc0')
+        # 色 (タイル1, タイル2, ライン)
+        self.colors = [
+            ((192, 240, 255), '#c0f0ff'),
+            ((176, 255, 192), '#b0ffc0'),
+            ((0, 0, 0), '#000000'),
+        ]
 
         # ボタン用のフレーム (サイドバー)
         self.button_frame = tk.Frame()
@@ -204,18 +205,25 @@ class MainWindow(tk.Tk):
             text='Deflate', command=self.deflate, width=10, state=tk.DISABLED)
         self.def_btn.pack(padx=5, pady=5, side=tk.TOP)
 
-        # カラーピッカー1
+        # カラーピッカー0 (タイル1の色)
+        self.col_btn_0 = tk.Button(
+            self.button_frame,
+            text='Color 0', command=lambda: self.pick_color(0), width=10,
+            bg=self.colors[0][1])
+        self.col_btn_0.pack(padx=5, pady=5, side=tk.TOP)
+
+        # カラーピッカー1 (タイル2の色)
         self.col_btn_1 = tk.Button(
             self.button_frame,
-            text='Color 1', command=self.pick_col_1, width=10,
-            bg=self.color1[1])
+            text='Color 1', command=lambda: self.pick_color(1), width=10,
+            bg=self.colors[1][1])
         self.col_btn_1.pack(padx=5, pady=5, side=tk.TOP)
 
-        # カラーピッカー2
+        # カラーピッカー2 (ラインの色)
         self.col_btn_2 = tk.Button(
             self.button_frame,
-            text='Color 2', command=self.pick_col_2, width=10,
-            bg=self.color2[1])
+            text='Line Color', command=lambda: self.pick_color(2), width=10,
+            bg=self.colors[2][1], fg='white')
         self.col_btn_2.pack(padx=5, pady=5, side=tk.TOP)
 
         # 保存ボタン
@@ -234,7 +242,7 @@ class MainWindow(tk.Tk):
         w = self.canvas.winfo_width()
         h = self.canvas.winfo_height()
         type = self.ptn_type.get()
-        colors = self.color1[0], self.color2[0]
+        colors = [c[0] for c in self.colors]
 
         # 初期状態のパターンを生成して、1回収縮・描画する
         self.pattern = Pattern(type, Point(w, h), colors)
@@ -246,7 +254,7 @@ class MainWindow(tk.Tk):
         self.save_btn['state'] = tk.NORMAL
 
     def deflate(self):
-        """収縮 (三角形を分割) する
+        """収縮 (三角形を分割) して描画する
         """
         if not hasattr(self, 'pattern'):
             return
@@ -270,34 +278,37 @@ class MainWindow(tk.Tk):
         self.image_tk = ImageTk.PhotoImage(self.image_pil)
         self.canvas.create_image(0, 0, image=self.image_tk, anchor=tk.NW)
 
-    def pick_col_1(self):
-        """カラーピッカーを開いて、Color1 をセットして、再描画する
+    def pick_color(self, i):
+        """カラーピッカーを開いて、色をセットして、再描画する
         """
-        color_code = colorchooser.askcolor(self.color1[0])
+        color_code = colorchooser.askcolor(self.colors[i][0])
         if all(color_code):
             rgb = [int(x) for x in color_code[0]]
-            self.color1 = (tuple(rgb), color_code[1])
-            self.col_btn_1['bg'] = color_code[1]
+            self.colors[i] = (tuple(rgb), color_code[1])
             self.apply_colors()
-
-    def pick_col_2(self):
-        """カラーピッカーを開いて、Color2 にセットして、再描画する
-        """
-        color_code = colorchooser.askcolor(self.color2[0])
-        if all(color_code):
-            rgb = [int(x) for x in color_code[0]]
-            self.color2 = (tuple(rgb), color_code[1])
-            self.col_btn_2['bg'] = color_code[1]
-            self.apply_colors()
+            self.update_col_btn(i)
 
     def apply_colors(self):
         """選択中の色を使って現在のパターンを再描画する
         """
         if not hasattr(self, 'pattern'):
             return
-        colors = self.color1[0], self.color2[0]
+        colors = [c[0] for c in self.colors]
         self.pattern.set_colors_from_rgb(colors)
         self.draw_pattern()
+
+    def update_col_btn(self, i):
+        """カラーピッカーボタンの色を更新
+        """
+        # 対象のボタンと色
+        btn = getattr(self, f'col_btn_{i}')
+        col = self.colors[i]
+
+        # ボタンの背景色をセット
+        btn['bg'] = col[1]
+        # 文字色を背景の明るさに合わせてセット
+        brightness = col[0][0] / 4 + col[0][1] * 1.8 + col[0][2] / 6
+        btn['fg'] = 'black' if brightness > 384 else 'white'
 
     def save(self):
         """表示中の画像をファイルに保存する
