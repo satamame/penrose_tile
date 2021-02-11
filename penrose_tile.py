@@ -27,12 +27,15 @@ RHOMBUSES = 1
 class Pattern(object):
     """タイルを構成する三角形の並びを管理するクラス
     """
-    def __init__(self, type, size, colors):
+    def __init__(self, type, size, colors, ltype):
         # タイルの種類
         self.type = type
 
         # 各タイルの色
         self.set_colors_from_rgb(colors)
+
+        # ラインタイプ
+        self.set_ltype(ltype)
 
         # 最初に作る三角形のオフセットとスケール
         offset = Point(size.x / 2, size.y / 2)
@@ -66,6 +69,13 @@ class Pattern(object):
         """
         self.colors = [list(reversed(c)) for c in colors]
 
+    def set_ltype(self, ltype):
+        """ラインタイプを属性にセットする
+
+        ラインタイプは ('LINE_4', 'LINE_8', 'LINE_AA') のいずれか
+        """
+        self.ltype = getattr(cv2, ltype)
+
     def draw(self, img):
         """img 配列に対して現在の状態を描画する
         """
@@ -91,7 +101,7 @@ class Pattern(object):
             polylines.append(polyline)
 
         # 輪郭を描画する
-        cv2.polylines(img, polylines, False, self.colors[2], 1)
+        cv2.polylines(img, polylines, False, self.colors[2], 1, self.ltype)
 
     def subdivide(self):
         """すべての三角形を分割して、収縮のステップを進める
@@ -163,8 +173,7 @@ class MainWindow(tk.Tk):
         self.title("Penrose tile")
 
         # パターンタイプ (ラジオボタンと連動する値)
-        self.ptn_type = tk.IntVar()
-        self.ptn_type.set(K_AND_D)
+        self.ptn_type = tk.IntVar(value=K_AND_D)
 
         # 色 (タイル1, タイル2, ライン)
         self.colors = [
@@ -172,6 +181,16 @@ class MainWindow(tk.Tk):
             ((176, 255, 192), '#b0ffc0'),
             ((0, 0, 0), '#000000'),
         ]
+
+        # ラインタイプ (プルダウンに設定する選択肢)
+        self.ltypes = (
+            'LINE_4',
+            'LINE_8',
+            'LINE_AA',
+        )
+
+        # ラインタイプ (プルダウンと連動する値)
+        self.ltype = tk.StringVar(value=self.ltypes[1])
 
         # ボタン用のフレーム (サイドバー)
         self.button_frame = tk.Frame()
@@ -226,6 +245,12 @@ class MainWindow(tk.Tk):
             bg=self.colors[2][1], fg='white')
         self.col_btn_2.pack(padx=5, pady=5, side=tk.TOP)
 
+        # ラインタイプメニュー
+        self.ltype_menu = tk.OptionMenu(
+            self.button_frame, self.ltype, *self.ltypes)
+        self.ltype_menu.pack(padx=5, pady=5, side=tk.TOP)
+        self.ltype.trace('w', self.apply_ltype)
+
         # 保存ボタン
         self.save_btn = tk.Button(
             self.button_frame,
@@ -243,9 +268,10 @@ class MainWindow(tk.Tk):
         h = self.canvas.winfo_height()
         type = self.ptn_type.get()
         colors = [c[0] for c in self.colors]
+        ltype = self.ltype.get()
 
         # 初期状態のパターンを生成して、1回収縮・描画する
-        self.pattern = Pattern(type, Point(w, h), colors)
+        self.pattern = Pattern(type, Point(w, h), colors, ltype)
         self.deflate()
 
         # 収縮ボタンを有効にする
@@ -256,10 +282,9 @@ class MainWindow(tk.Tk):
     def deflate(self):
         """収縮 (三角形を分割) して描画する
         """
-        if not hasattr(self, 'pattern'):
-            return
-        self.pattern.subdivide()
-        self.draw_pattern()
+        if hasattr(self, 'pattern'):
+            self.pattern.subdivide()
+            self.draw_pattern()
 
     def draw_pattern(self):
         """現在のパターンをキャンバスに描画する
@@ -291,11 +316,10 @@ class MainWindow(tk.Tk):
     def apply_colors(self):
         """選択中の色を使って現在のパターンを再描画する
         """
-        if not hasattr(self, 'pattern'):
-            return
-        colors = [c[0] for c in self.colors]
-        self.pattern.set_colors_from_rgb(colors)
-        self.draw_pattern()
+        if hasattr(self, 'pattern'):
+            colors = [c[0] for c in self.colors]
+            self.pattern.set_colors_from_rgb(colors)
+            self.draw_pattern()
 
     def update_col_btn(self, i):
         """カラーピッカーボタンの色を更新
@@ -309,6 +333,13 @@ class MainWindow(tk.Tk):
         # 文字色を背景の明るさに合わせてセット
         brightness = col[0][0] / 4 + col[0][1] * 1.8 + col[0][2] / 6
         btn['fg'] = 'black' if brightness > 384 else 'white'
+
+    def apply_ltype(self, *args):
+        """選択中のラインタイプを使って現在のパターンを再描画する
+        """
+        if hasattr(self, 'pattern'):
+            self.pattern.set_ltype(self.ltype.get())
+            self.draw_pattern()
 
     def save(self):
         """表示中の画像をファイルに保存する
