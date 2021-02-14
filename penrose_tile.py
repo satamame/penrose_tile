@@ -8,8 +8,9 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 
-# 点と三角形のための簡易クラス
+# 点, サイズ, 三角形のための簡易クラス
 Point = namedtuple('Point', 'x y')
+Size = namedtuple('Size', 'w, h')
 Triangle = namedtuple('Triangle', 'type p1 p2 p3')
 
 # タイルを構成する三角形の種類 (鋭角または鈍角)
@@ -38,7 +39,7 @@ class Pattern(object):
         self.set_ltype(ltype)
 
         # 最初に作る三角形のオフセットとスケール
-        offset = Point(size.x / 2, size.y / 2)
+        offset = Point(size.w / 2, size.h / 2)
         scale = max(offset.x, offset.y) * 1.5
 
         # 初期状態として、10個の三角形を作る
@@ -164,6 +165,17 @@ class Pattern(object):
         self.triangles = result
 
 
+# ウィンドウのモード
+MODE_SETTING = 0  # 設定中
+MODE_DRAWING = 1  # 描画中
+
+
+def validate_digit(before, after):
+    """数字入力のバリデーション
+    """
+    return after.isdigit() or not after
+
+
 class MainWindow(tk.Tk):
     """ウィンドウ
     """
@@ -172,8 +184,14 @@ class MainWindow(tk.Tk):
         self.minsize(600, 400)
         self.title("Penrose tile")
 
+        # モード
+        self.mode = MODE_SETTING
+
         # パターンタイプ (ラジオボタンと連動する値)
         self.ptn_type = tk.IntVar(value=K_AND_D)
+
+        # 画像サイズをキャンバスに合わせる (チェックボックスと連動する値)
+        self.fit_canvas = tk.BooleanVar(value=True)
 
         # 色 (タイル1, タイル2, ライン)
         self.colors = [
@@ -192,36 +210,72 @@ class MainWindow(tk.Tk):
         # ラインタイプ (プルダウンと連動する値)
         self.ltype = tk.StringVar(value=self.ltypes[1])
 
+        # GUI の初期化
+        self.init_gui()
+
+    def init_gui(self):
+        """GUI の初期化
+        """
         # ボタン用のフレーム (サイドバー)
         self.button_frame = tk.Frame()
-        self.button_frame.pack(padx=5, pady=5, side=tk.LEFT, fill=tk.Y)
+        self.button_frame.pack(padx=5, pady=10, side=tk.LEFT, fill=tk.Y)
 
         # キャンバス用のフレーム
         self.canvas_frame = tk.Frame()
         self.canvas_frame.pack(
             padx=5, pady=5, side=tk.LEFT, fill=tk.BOTH, expand=1)
 
+        # リセットボタン
+        self.reset_btn = tk.Button(
+            self.button_frame,
+            text='Reset', command=self.reset, width=10, state=tk.DISABLED)
+        self.reset_btn.pack(padx=5, pady=5, side=tk.TOP)
+
         # ラジオボタン (パターンタイプ)
         self.ptn_rdb_k_and_d = tk.Radiobutton(
             self.button_frame,
             value=K_AND_D, variable=self.ptn_type, text='Kite and Dart')
-        self.ptn_rdb_k_and_d.pack(padx=5, pady=5, side=tk.TOP)
+        self.ptn_rdb_k_and_d.pack(padx=5, pady=0, side=tk.TOP, anchor=tk.W)
 
         self.ptn_rdb_rhombuses = tk.Radiobutton(
             self.button_frame,
             value=RHOMBUSES, variable=self.ptn_type, text='Rhombuses')
-        self.ptn_rdb_rhombuses.pack(padx=5, pady=5, side=tk.TOP)
+        self.ptn_rdb_rhombuses.pack(padx=5, pady=0, side=tk.TOP, anchor=tk.W)
 
-        # 初期化ボタン
-        self.ini_btn = tk.Button(
-            self.button_frame,
-            text='Initialize', command=self.initialize, width=10)
-        self.ini_btn.pack(padx=5, pady=5, side=tk.TOP)
+        # チェックボックス (画像サイズをキャンバスに合わせる)
+        self.fit_chk = tk.Checkbutton(
+            self.button_frame, command=self.check_fit,
+            variable=self.fit_canvas, text='Canvas size')
+        self.fit_chk.pack(padx=5, pady=0, side=tk.TOP, anchor=tk.W)
 
-        # 収縮ボタン
+        # サイズ指定 UI 群フレーム
+        dims_frame = tk.Frame(self.button_frame)
+        dims_frame.pack(padx=5, pady=5, side=tk.TOP)
+
+        # ラベル (w:)
+        w_lbl = tk.Label(dims_frame, text='w:')
+        w_lbl.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+
+        # サイズ (w) のテキストフィールド
+        self.w_txt = tk.Entry(dims_frame, width=4, state=tk.DISABLED)
+        self.w_txt.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+        vcmd_w = (self.w_txt.register(validate_digit), '%s', '%P')
+        self.w_txt.configure(validate='key', vcmd=vcmd_w)
+
+        # ラベル (h:)
+        h_lbl = tk.Label(dims_frame, text='h:')
+        h_lbl.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+
+        # サイズ (h) のテキストフィールド
+        self.h_txt = tk.Entry(dims_frame, width=4, state=tk.DISABLED)
+        self.h_txt.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+        vcmd_h = (self.h_txt.register(validate_digit), '%s', '%P')
+        self.h_txt.configure(validate='key', vcmd=vcmd_w)
+
+        # 収縮ボタン (最初は初期化ボタン)
         self.def_btn = tk.Button(
             self.button_frame,
-            text='Deflate', command=self.deflate, width=10, state=tk.DISABLED)
+            text='Initialize', command=self.deflate, width=10)
         self.def_btn.pack(padx=5, pady=5, side=tk.TOP)
 
         # カラーピッカー0 (タイル1の色)
@@ -260,38 +314,129 @@ class MainWindow(tk.Tk):
         # キャンバス
         self.canvas = tk.Canvas(self.canvas_frame, bg='white')
         self.canvas.pack(padx=5, pady=5, fill=tk.BOTH, expand=1)
+        self.canvas.bind('<Configure>', self.canvas_resized)
 
-    def initialize(self):
-        """初期状態のパターンを作ってキャンバスを初期化する
+    def reset(self):
+        """状態をリセットして設定を編集可能にする
+        """
+        # 保存ボタンをクリック不可にする
+        self.save_btn['state'] = tk.DISABLED
+
+        # モードを「設定中」にする
+        self.mode = MODE_SETTING
+        self.reset_btn['state'] = tk.DISABLED
+
+        # 描画用の属性をクリアする
+        self.pattern = None
+        self.image_pil = None
+        self.image_tk = None
+
+        # 設定用の UI を編集可能にする
+        self.ptn_rdb_k_and_d['state'] = tk.NORMAL
+        self.ptn_rdb_rhombuses['state'] = tk.NORMAL
+        self.fit_chk['state'] = tk.NORMAL
+
+        self.w_txt['state'] = tk.NORMAL
+        self.h_txt['state'] = tk.NORMAL
+
+        # 画像サイズをキャンバスに合わせているなら、UI を更新して編集不可にする
+        if self.fit_canvas.get():
+            self.indicate_canvas_size()
+            self.w_txt['state'] = tk.DISABLED
+            self.h_txt['state'] = tk.DISABLED
+
+        # 収縮ボタンのテキストを変更する
+        self.def_btn['text'] = 'Initialize'
+
+    def canvas_resized(self, event):
+        """キャンバスサイズが変わった時のイベントハンドラ
+        """
+        # 設定変更中で、画像サイズをキャンバスに合わせているなら、UI を更新
+        if self.mode == MODE_SETTING and self.fit_canvas.get():
+            self.w_txt['state'] = tk.NORMAL
+            self.h_txt['state'] = tk.NORMAL
+            self.indicate_canvas_size()
+            self.w_txt['state'] = tk.DISABLED
+            self.h_txt['state'] = tk.DISABLED
+
+    def check_fit(self):
+        """チェックボックス (画像サイズをキャンバスに…) のクリックハンドラ
+        """
+        # チェックしたなら、キャンバスサイズを UI に反映して編集不可にする
+        if self.fit_canvas.get():
+            self.indicate_canvas_size()
+            self.w_txt['state'] = tk.DISABLED
+            self.h_txt['state'] = tk.DISABLED
+
+        # チェックを外したなら、UI を編集可能にする
+        else:
+            self.w_txt['state'] = tk.NORMAL
+            self.h_txt['state'] = tk.NORMAL
+
+    def indicate_canvas_size(self):
+        """キャンバスサイズを UI に反映する
         """
         w = self.canvas.winfo_width()
         h = self.canvas.winfo_height()
-        type = self.ptn_type.get()
-        colors = [c[0] for c in self.colors]
-        ltype = self.ltype.get()
-
-        # 初期状態のパターンを生成して、1回収縮・描画する
-        self.pattern = Pattern(type, Point(w, h), colors, ltype)
-        self.deflate()
-
-        # 収縮ボタンを有効にする
-        self.def_btn['state'] = tk.NORMAL
-        # 保存ボタンを有効にする
-        self.save_btn['state'] = tk.NORMAL
+        self.w_txt.delete(0, tk.END)
+        self.w_txt.insert(tk.END, str(w))
+        self.h_txt.delete(0, tk.END)
+        self.h_txt.insert(tk.END, str(h))
 
     def deflate(self):
         """収縮 (三角形を分割) して描画する
         """
-        if hasattr(self, 'pattern'):
+        # モードが設定変更中だった場合の処理
+        if self.mode == MODE_SETTING:
+            # モードを描画中にする
+            self.mode = MODE_DRAWING
+            self.reset_btn['state'] = tk.NORMAL
+
+            # 設定用の UI を編集不可にする
+            self.ptn_rdb_k_and_d['state'] = tk.DISABLED
+            self.ptn_rdb_rhombuses['state'] = tk.DISABLED
+            self.fit_chk['state'] = tk.DISABLED
+            self.w_txt['state'] = tk.DISABLED
+            self.h_txt['state'] = tk.DISABLED
+
+            # パターンとキャンバスを初期化する
+            self.initialize()
+
+            # 保存ボタンをクリック可能にする
+            self.save_btn['state'] = tk.NORMAL
+
+            # 収縮ボタンのテキストを変更する
+            self.def_btn['text'] = 'Deflate'
+
+        # 通常の収縮処理
+        if getattr(self, 'pattern', None):
             self.pattern.subdivide()
             self.draw_pattern()
+
+    def initialize(self):
+        """初期状態のパターンを作ってキャンバスを初期化する
+        """
+        if self.fit_canvas.get():
+            w = self.canvas.winfo_width()
+            h = self.canvas.winfo_height()
+        else:
+            w = int(self.w_txt.get())
+            h = int(self.h_txt.get())
+
+        self.img_size = Size(w, h)
+
+        type = self.ptn_type.get()
+        colors = [c[0] for c in self.colors]
+        ltype = self.ltype.get()
+
+        # 初期状態のパターンを生成する
+        self.pattern = Pattern(type, self.img_size, colors, ltype)
 
     def draw_pattern(self):
         """現在のパターンをキャンバスに描画する
         """
-        # キャンバスのサイズに合わせて白いオフスクリーンを作る
-        w = self.canvas.winfo_width()
-        h = self.canvas.winfo_height()
+        # 白いオフスクリーンを作る
+        w, h = self.img_size
         img = np.full((h, w, 3), 255, np.uint8)
 
         # オフスクリーンに描画する
@@ -316,7 +461,7 @@ class MainWindow(tk.Tk):
     def apply_colors(self):
         """選択中の色を使って現在のパターンを再描画する
         """
-        if hasattr(self, 'pattern'):
+        if getattr(self, 'pattern', None):
             colors = [c[0] for c in self.colors]
             self.pattern.set_colors_from_rgb(colors)
             self.draw_pattern()
@@ -337,14 +482,14 @@ class MainWindow(tk.Tk):
     def apply_ltype(self, *args):
         """選択中のラインタイプを使って現在のパターンを再描画する
         """
-        if hasattr(self, 'pattern'):
+        if getattr(self, 'pattern', None):
             self.pattern.set_ltype(self.ltype.get())
             self.draw_pattern()
 
     def save(self):
         """表示中の画像をファイルに保存する
         """
-        if not hasattr(self, 'image_pil'):
+        if not getattr(self, 'image_pil', None):
             return
         filename = filedialog.asksaveasfilename(
             initialdir=".",
