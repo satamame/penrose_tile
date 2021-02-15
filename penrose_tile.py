@@ -181,7 +181,7 @@ class MainWindow(tk.Tk):
     """
     def __init__(self):
         super().__init__()
-        self.minsize(600, 400)
+        self.minsize(593, 397)
         self.title("Penrose tile")
 
         # モード
@@ -218,12 +218,12 @@ class MainWindow(tk.Tk):
         """
         # ボタン用のフレーム (サイドバー)
         self.button_frame = tk.Frame()
-        self.button_frame.pack(padx=5, pady=10, side=tk.LEFT, fill=tk.Y)
+        self.button_frame.pack(padx=5, pady=5, side=tk.LEFT, fill=tk.Y)
 
         # キャンバス用のフレーム
         self.canvas_frame = tk.Frame()
         self.canvas_frame.pack(
-            padx=5, pady=5, side=tk.LEFT, fill=tk.BOTH, expand=1)
+            padx=10, pady=10, side=tk.LEFT, fill=tk.BOTH, expand=1)
 
         # リセットボタン
         self.reset_btn = tk.Button(
@@ -254,21 +254,21 @@ class MainWindow(tk.Tk):
 
         # ラベル (w:)
         w_lbl = tk.Label(dims_frame, text='w:')
-        w_lbl.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+        w_lbl.pack(side=tk.LEFT, anchor=tk.W)
 
         # サイズ (w) のテキストフィールド
         self.w_txt = tk.Entry(dims_frame, width=4, state=tk.DISABLED)
-        self.w_txt.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+        self.w_txt.pack(side=tk.LEFT, anchor=tk.W)
         vcmd_w = (self.w_txt.register(validate_digit), '%s', '%P')
         self.w_txt.configure(validate='key', vcmd=vcmd_w)
 
         # ラベル (h:)
         h_lbl = tk.Label(dims_frame, text='h:')
-        h_lbl.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+        h_lbl.pack(side=tk.LEFT, anchor=tk.W)
 
         # サイズ (h) のテキストフィールド
         self.h_txt = tk.Entry(dims_frame, width=4, state=tk.DISABLED)
-        self.h_txt.pack(padx=0, pady=0, side=tk.LEFT, anchor=tk.W)
+        self.h_txt.pack(side=tk.LEFT, anchor=tk.W)
         vcmd_h = (self.h_txt.register(validate_digit), '%s', '%P')
         self.h_txt.configure(validate='key', vcmd=vcmd_w)
 
@@ -311,10 +311,25 @@ class MainWindow(tk.Tk):
             text='Save', command=self.save, width=10, state=tk.DISABLED)
         self.save_btn.pack(padx=5, pady=5, side=tk.TOP)
 
+        # 縦スクロールバー
+        self.bar_y = tk.Scrollbar(self.canvas_frame, orient=tk.VERTICAL)
+        self.bar_y.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 横スクロールバー
+        self.bar_x = tk.Scrollbar(self.canvas_frame, orient=tk.HORIZONTAL)
+        self.bar_x.pack(side=tk.BOTTOM, fill=tk.X)
+
         # キャンバス
-        self.canvas = tk.Canvas(self.canvas_frame, bg='white')
-        self.canvas.pack(padx=5, pady=5, fill=tk.BOTH, expand=1)
+        self.canvas = tk.Canvas(
+            self.canvas_frame, bd=0, highlightthickness=0, bg='white')
+        self.canvas.pack(fill=tk.BOTH, expand=1)
         self.canvas.bind('<Configure>', self.canvas_resized)
+
+        # スクロールバーの関連付け
+        self.bar_y.config(command=self.canvas.yview)
+        self.bar_x.config(command=self.canvas.xview)
+        self.canvas.config(
+            yscrollcommand=self.bar_y.set, xscrollcommand=self.bar_x.set)
 
     def reset(self):
         """状態をリセットして設定を編集可能にする
@@ -344,6 +359,9 @@ class MainWindow(tk.Tk):
             self.indicate_canvas_size()
             self.w_txt['state'] = tk.DISABLED
             self.h_txt['state'] = tk.DISABLED
+
+        # キャンバスのスクロール範囲をリセット
+        self.canvas.config(scrollregion=(0, 0, 0, 0))
 
         # 収縮ボタンのテキストを変更する
         self.def_btn['text'] = 'Initialize'
@@ -392,6 +410,12 @@ class MainWindow(tk.Tk):
             self.mode = MODE_DRAWING
             self.reset_btn['state'] = tk.NORMAL
 
+            # w, h が空なら現在のキャンバスのサイズから取る
+            if not self.w_txt.get():
+                self.w_txt.insert(tk.END, str(self.canvas.winfo_width()))
+            if not self.h_txt.get():
+                self.h_txt.insert(tk.END, str(self.canvas.winfo_height()))
+
             # 設定用の UI を編集不可にする
             self.ptn_rdb_k_and_d['state'] = tk.DISABLED
             self.ptn_rdb_rhombuses['state'] = tk.DISABLED
@@ -399,8 +423,11 @@ class MainWindow(tk.Tk):
             self.w_txt['state'] = tk.DISABLED
             self.h_txt['state'] = tk.DISABLED
 
-            # パターンとキャンバスを初期化する
+            # パターンを初期化する
             self.initialize()
+
+            # キャンバスのスクロール範囲を決める
+            self.canvas.config(scrollregion=(0, 0, *self.img_size))
 
             # 保存ボタンをクリック可能にする
             self.save_btn['state'] = tk.NORMAL
@@ -408,28 +435,29 @@ class MainWindow(tk.Tk):
             # 収縮ボタンのテキストを変更する
             self.def_btn['text'] = 'Deflate'
 
-        # 通常の収縮処理
+        # 収縮と描画の処理
         if getattr(self, 'pattern', None):
             self.pattern.subdivide()
             self.draw_pattern()
 
     def initialize(self):
-        """初期状態のパターンを作ってキャンバスを初期化する
+        """初期状態のパターンを生成する
         """
+        # 画像サイズを確定する
         if self.fit_canvas.get():
             w = self.canvas.winfo_width()
             h = self.canvas.winfo_height()
         else:
             w = int(self.w_txt.get())
             h = int(self.h_txt.get())
-
         self.img_size = Size(w, h)
 
+        # パラメタを確定する
         type = self.ptn_type.get()
         colors = [c[0] for c in self.colors]
         ltype = self.ltype.get()
 
-        # 初期状態のパターンを生成する
+        # 初期パターンを生成する
         self.pattern = Pattern(type, self.img_size, colors, ltype)
 
     def draw_pattern(self):
