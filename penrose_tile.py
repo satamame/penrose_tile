@@ -28,9 +28,9 @@ RHOMBUSES = 1
 class Pattern(object):
     """タイルを構成する三角形の並びを管理するクラス
     """
-    def __init__(self, type, size, colors, ltype):
+    def __init__(self, type_, size, colors, ltype):
         # タイルの種類
-        self.type = type
+        self.type = type_
 
         # 各タイルの色
         self.set_colors_from_rgb(colors)
@@ -62,8 +62,7 @@ class Pattern(object):
             p3 = Point(p3.x + offset.x, p3.y + offset.y)
 
             # 三角形を ACUTE タイプとして追加
-            type = ACUTE
-            self.triangles.append(Triangle(type, p1, p2, p3))
+            self.triangles.append(Triangle(ACUTE, p1, p2, p3))
 
     def set_colors_from_rgb(self, colors):
         """colors に入っている (r, g, b) を逆順にして属性にセットする
@@ -83,11 +82,13 @@ class Pattern(object):
         # 輪郭はリストにまとめて最後に一括で描画する
         polylines = []
 
-        # 描くべき辺を取り出す関数
+        # 描くべき辺を取り出す関数 (タイルの種類によって違う)
         if self.type == K_AND_D:
-            get_line = lambda tr: np.array([tr.p2, tr.p3, tr.p1], np.int32)
+            def get_line(tr):
+                return np.array([tr.p2, tr.p3, tr.p1], np.int32)
         else:
-            get_line = lambda tr: np.array([tr.p3, tr.p1, tr.p2], np.int32)
+            def get_line(tr):
+                return np.array([tr.p3, tr.p1, tr.p2], np.int32)
 
         # すべての三角形を描画するループ
         for tr in self.triangles:
@@ -270,7 +271,7 @@ class MainWindow(tk.Tk):
         self.h_txt = tk.Entry(dims_frame, width=4, state=tk.DISABLED)
         self.h_txt.pack(side=tk.LEFT, anchor=tk.W)
         vcmd_h = (self.h_txt.register(validate_digit), '%s', '%P')
-        self.h_txt.configure(validate='key', vcmd=vcmd_w)
+        self.h_txt.configure(validate='key', vcmd=vcmd_h)
 
         # 収縮ボタン (最初は初期化ボタン)
         self.def_btn = tk.Button(
@@ -453,12 +454,12 @@ class MainWindow(tk.Tk):
         self.img_size = Size(w, h)
 
         # パラメタを確定する
-        type = self.ptn_type.get()
+        type_ = self.ptn_type.get()
         colors = [c[0] for c in self.colors]
         ltype = self.ltype.get()
 
         # 初期パターンを生成する
-        self.pattern = Pattern(type, self.img_size, colors, ltype)
+        self.pattern = Pattern(type_, self.img_size, colors, ltype)
 
     def draw_pattern(self):
         """現在のパターンをキャンバスに描画する
@@ -528,7 +529,7 @@ class MainWindow(tk.Tk):
                 ("GIF Image Files", ".gif"),
             ],
             initialfile='New_Image',
-            defaultextension = ".png"
+            defaultextension=".png"
         )
         if filename:
             self.image_pil.save(filename)
