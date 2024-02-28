@@ -6,14 +6,14 @@
 
 動作確認は以下の環境で行いました。
 
-- Python 3.8.1
+- Python 3.12.2
 - Windows 10 Home 2004
 
 以下のパッケージを使用します。
 
-- numpy==1.20.0
-- opencv-python==4.5.1.48
-- Pillow==8.1.0
+- numpy==1.26.4
+- opencv-python==4.9.0.80
+- Pillow==10.2.0
 
 GUI は Tkinter です。
 
